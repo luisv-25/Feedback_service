@@ -4,6 +4,14 @@ import { ValidationPipe } from "@nestjs/common";
 import { Transport, MicroserviceOptions } from "@nestjs/microservices";
 import { AppModule } from "./app.module";
 
+// RabbitMQ puede rechazar la conexión (p. ej. límite de conexiones del plan
+// gratis de CloudAMQP). Sin esto, Node cierra el proceso con "Exited with
+// status 1" y la API HTTP tampoco levanta.
+process.on("unhandledRejection", (reason) => {
+  // eslint-disable-next-line no-console
+  console.error("[feedback-service] unhandledRejection (¿RabbitMQ?):", reason);
+});
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors();
@@ -20,7 +28,12 @@ async function bootstrap() {
       queueOptions: { durable: true },
     },
   });
-  await app.startAllMicroservices();
+  try {
+    await app.startAllMicroservices();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[feedback-service] No se pudo conectar el consumidor RabbitMQ; la API HTTP sigue activa", err);
+  }
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
